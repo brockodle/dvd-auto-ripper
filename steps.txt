@@ -1,0 +1,230 @@
+TVDB API documentation: https://thetvdb.github.io/v4-api/
+TMDB API documentation: https://developer.themoviedb.org/v4/reference/intro/getting-started
+HANDBRAKE CLI documentation: https://handbrake.fr/docs/en/latest/cli/cli-options.html
+TMDB_API_KEY="b71086e74a0d3b9e48f4537c3a60a874"
+TVDB_API_KEY="0288a259-2426-4036-9e8c-cdb198098f1b"
+
+**AI COMMAND**
+Use the following directions to create separate functions for each situation. the sections are delineated by the "**" symbols.
+
+**USER BEGINNING PROMPTS**
+1. prompt user for location for output location. store this as a variable
+2. prompt user for TV Show or Movie. store this as a variable.
+3. prompt user whether the disc is a TV Show (TV SHOW) or a Movie (MOVIE). store this as a variable.
+
+**TV SHOW**
+1. Prompt user for the TV Show's name. store this as a variable.
+
+2. Check folder location for Season number (eg "Season X"). Use this as the input for SEASON variable. If no Season number is found, then prompt user for the Season number.
+
+3. prompt the user for the starting episode. store this as a variable.
+
+4. Gather the TOTAL amount of episodes from the Season listing, store this as a variable.
+
+5. prompt user whether to rip a compilation or by-the-episode. store this as a variable.
+
+6. Using the TVDB API, search for the TV Show, the season number, and the season's total episodes.
+
+7. Within the season choice, find the shortest length and longest length of the episodes possible on TMDB. store these as variables.    
+
+8. if the user chose BY-THE-EPISODE, then find the TITLE that matches > shortest length and < longest length, then rip the TITLE as a whole, with all chapters included.
+
+9. if the user chose COMPILATION, then find all TITLES that exceed 1.5 hours in length, and rip them, break them into individual files by chapter. If the length of the chapter is < shortest episode length, then skip the chapter. if it is > shortest length episode and < longest episode, then rip the chapter as an individual file. Skip other files that do not match the criteria.
+
+    - if {starting episode} + {sum of all applicable chapters in TITLEs} > {TVDB API total episodes of this season}, then create a new folder in the parent (eg. current folder: <parent>/Season 6; create a new folder in <parent>, as the next sequential season ("Season 7"), and rip the excess CHAPTERS from {sum of all applicable chapters in TITLEs} to that folder
+
+10. During the ripping process, add any duplicate filename items to another folder in <parent> called "Out of Order".
+
+11. Complete whole Handbrake ripping process, and then prompt user to insert next disc or exit.
+
+12. Celebrate the user, they're awesome.
+
+**MOVIE**
+1. prompt user for the movie's name. store this as a variable.
+
+2. Using The Movie DB API, search for the movie. Store this as a variable like this: <MOVIE_NAME (YYYY)>
+
+3. Use handbrake to scan the disc, and find the TITLE with the most chapters present.
+
+4. rip the TITLE with the most chapters present.
+
+5. Complete the ripping process.
+
+6. prompt user to insert next disc or exit.
+
+7. Celebrate the user, they're awesome.
+
+DVD Ripping Process:
+
+1. Initial Setup
+   - Check for required dependencies (HandBrakeCLI, ffmpeg, dd)
+   - Clean up any leftover lock files or temporary files from previous sessions
+   - Set up logging in ~/.dvd_ripper/logs
+   - Detect and validate DVD device (/dev/sr0, /dev/sr1, etc.)
+   - Handle device path changes during operation
+   - Create lock file to prevent automount interference
+
+2. User Input & Auto-Detection
+   - Get output directory path
+   - Try to auto-detect show name and season from directory structure
+   - Prompt for TV Show or Movie
+   - For TV Shows:
+     * Confirm or manually enter show name
+     * Confirm or manually enter season number
+     * Get starting episode number
+   - For Movies:
+     * Get movie name
+     * Look up on TMDB API to get year
+     * Format as "Movie Name (YYYY)"
+
+3. API Information Lookup
+   - For TV Shows (TVDB API):
+     * Get show information
+     * Get season episode count
+     * Get episode length range for validation
+     * Display show information for confirmation
+   - For Movies (TMDB API):
+     * Verify movie exists
+     * Get movie details
+     * Store as "Movie Name (YYYY)"
+
+4. Disc Analysis
+   - Scan DVD for titles using HandBrake
+   - Handle DVD read errors with automatic recovery:
+     * Detect read failures
+     * Attempt device remounting
+     * Retry with reduced verbosity
+     * Fall back to safer read modes
+   - For TV Shows:
+     * Filter titles based on episode duration range
+     * Group titles by duration to detect duplicates
+     * Sample potentially duplicate titles
+     * Create list of unique episodes
+   - For Movies:
+     * Identify title with most chapters
+     * Verify title length matches expected movie length
+
+5. Ripping Mode Selection (TV Shows Only)
+   - Episode Mode (default):
+     * Find titles matching typical episode length
+     * Skip duplicate episodes
+     * Name files as S01E01.mkv format
+     * Move duplicates to "Out of Order" folder
+   - Compilation Mode:
+     * Find titles > 90 minutes
+     * Verify chapter lengths match episode range
+     * Split into individual episode files
+     * Handle season overflow:
+       - Create next season folder if needed
+       - Continue numbering in new season
+     * Move duplicates to "Out of Order" folder
+
+6. Ripping Process
+   - Use GPU acceleration (NVENC) when available
+     * Fall back to x264 if NVENC fails
+   - Show detailed progress for each title
+   - Monitor for stalled rips
+   - Handle read errors gracefully
+   - Allow retry on failures
+   - Create detailed logs for debugging
+
+7. Error Handling & Recovery
+   - Detect and handle DVD read errors
+   - Attempt device recovery when needed
+   - Log errors with context
+   - Provide user-friendly error messages
+   - Allow graceful exit or retry
+   - Maintain detailed logs for troubleshooting
+
+8. Completion
+   - Verify ripped files
+   - Clean up temporary files
+   - Prompt for next disc or exit
+   - Celebrate the user's success!
+
+Notes:
+- Program handles both individual episodes and compilation titles
+- Automatically detects and handles duplicate episodes
+- Uses GPU acceleration when available
+- Creates detailed logs for troubleshooting
+- Handles device path changes during operation
+- Prevents automount from interfering with ripping
+- Provides smart defaults while allowing manual override
+
+Program Structure and Process:
+
+A. Initial Commands
+   1. User Beginning Prompts
+      - Get output location path
+      - Prompt for media type (TV Show/Movie)
+      - Store choices as variables
+
+   2. Media Type Processing
+      TV SHOWS:
+      - Get/detect show name
+      - Get/detect season number from folder structure
+      - Get starting episode number
+      - Get total episodes from API
+      - Choose ripping mode (compilation/by-episode)
+      - Look up show details on TVDB API
+      - Get episode length ranges
+      - Process based on mode:
+        * By-Episode: Match title lengths to episode range
+        * Compilation: Handle long titles (>90min) by chapters
+      - Handle season overflow with new folders
+      - Move duplicates to "Out of Order"
+      
+      MOVIES:
+      - Get movie name
+      - Look up on TMDB API
+      - Format as "Movie Name (YYYY)"
+      - Find title with most chapters
+      - Rip as single file
+
+B. Technical Implementation
+
+1. Initial Setup
+   - Check dependencies (HandBrakeCLI, ffmpeg, dd)
+   - Clean up previous sessions
+   - Set up logging
+   - Validate DVD device
+
+2. User Input & Auto-Detection
+   - Get/validate paths
+   - Auto-detect show/season when possible
+   - Handle both TV/Movie workflows
+
+3. API Information Lookup
+   - TV Shows: TVDB API integration
+   - Movies: TMDB API integration
+   - Validate media information
+
+4. Disc Analysis
+   - Scan with error handling
+   - Process titles based on media type
+   - Handle duplicates
+
+5. Ripping Process
+   - Use GPU acceleration
+   - Monitor progress
+   - Handle errors
+   - Log everything
+
+6. Error Handling & Recovery
+   - Device management
+   - Read error recovery
+   - User-friendly messages
+
+7. Completion
+   - Verify files
+   - Clean up
+   - Prompt for next disc
+   - Celebrate success!
+
+Notes:
+- Smart defaults with manual override
+- GPU acceleration when available
+- Robust error handling
+- Detailed logging
+- Device management
+- User-friendly interface
