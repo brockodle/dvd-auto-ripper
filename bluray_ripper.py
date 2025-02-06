@@ -544,29 +544,28 @@ def get_tvdb_episode_info(show_name: str, season_num: int) -> tuple[float, float
         show_id = shows[0]['id']
         logger.info(f"Found show ID: {show_id}")
         
-        # Get episodes for the season
-        episodes_url = f"{CONFIG['TVDB_API_URL']}/series/{show_id}/episodes/official"
-        response = requests.get(episodes_url, headers={"accept": "application/json", "Content-Type": "application/json"})
+        # Get season info
+        season_url = f"{CONFIG['TVDB_API_URL']}/series/{show_id}/seasons"
+        response = requests.get(season_url, headers={"accept": "application/json", "Content-Type": "application/json"})
         response.raise_for_status()
         
-        episodes = response.json().get('data', [])
+        seasons = response.json().get('data', [])
+        target_season = None
+        for season in seasons:
+            if season.get('type', {}).get('name') == 'official' and season.get('number') == season_num:
+                target_season = season
+                break
         
-        # Filter episodes for our season and get their runtimes
-        season_runtimes = []
-        for episode in episodes:
-            if episode.get('seasonNumber') == season_num and episode.get('runtime'):
-                season_runtimes.append(int(episode['runtime']))
+        if not target_season:
+            raise BluRayError(f"Season {season_num} not found for '{show_name}'")
         
-        if not season_runtimes:
-            logger.warning(f"No runtime data found for {show_name} Season {season_num}")
-            # Fallback to default range of 30-60 minutes
-            return 30 * 60, 60 * 60
+        # Get runtime from season data
+        runtime = target_season.get('runtime', 30)  # Default to 30 minutes if not found
         
-        # Get min and max runtimes
-        min_runtime = min(season_runtimes) * 60  # Convert to seconds
-        max_runtime = max(season_runtimes) * 60
+        # Set range to ±5 minutes of the runtime
+        min_runtime = (runtime - 5) * 60  # Convert to seconds
+        max_runtime = (runtime + 5) * 60
         
-        logger.info(f"Found runtime range: {min_runtime/60:.1f}-{max_runtime/60:.1f} minutes")
         return min_runtime, max_runtime
         
     except requests.exceptions.RequestException as e:
@@ -1157,107 +1156,13 @@ def parse_titles(output: str) -> dict:
         
     return filtered_titles
 
-def find_show_folder(base_dir: Path, show_name: str) -> list[Path]:
-    """Find potential matching show folders"""
-    matches = []
-    try:
-        # Check for exact and partial matches
-        for folder in base_dir.iterdir():
-            if not folder.is_dir():
-                continue
-            
-            folder_name = folder.name.lower()
-            show_name_lower = show_name.lower()
-            
-            # Check for exact match first
-            if folder_name == show_name_lower:
-                matches.insert(0, folder)  # Put exact matches first
-            # Check for partial match
-            elif show_name_lower in folder_name:
-                matches.append(folder)
-            # Check for year-tagged shows (e.g., "Show Name (2005)")
-            elif re.match(rf"{re.escape(show_name_lower)}\s*\(\d{{4}}\)", folder_name):
-                matches.append(folder)
-                
-    except Exception as e:
-        logger.error(f"Error searching for show folder: {e}")
-    
-    return matches
-
-def create_folder_structure(base_dir: Path, show_name: str, season_num: int) -> Path:
-    """Create the standard folder structure"""
-    show_dir = base_dir / show_name
-    season_dir = show_dir / f"Season {season_num}"
-    
-    show_dir.mkdir(exist_ok=True)
-    season_dir.mkdir(exist_ok=True)
-    
-    return season_dir
-
-def setup_output_directory(provided_dir: Path) -> tuple[Path, str, int]:
-    """Set up the output directory structure and return the final path"""
-    try:
-        # First check if we're already in a season folder
-        season_match = re.search(r'(?:season|series)[_ ]?(\d+)', provided_dir.name, re.IGNORECASE)
-        parent_is_show = False
-        
-        if season_match:
-            season_num = int(season_match.group(1))
-            show_name = provided_dir.parent.name
-            # Clean up show name (remove year tags etc)
-            show_name = re.sub(r'\s*\(\d{4}\)', '', show_name).strip()
-            parent_is_show = True
-            return provided_dir, show_name, season_num
-        
-        # If not in season folder, prompt for show and season
-        show_name = Prompt.ask("[cyan]Enter TV Show name[/cyan]")
-        season_num = int(Prompt.ask("[cyan]Enter Season number[/cyan]"))
-        
-        # Look for matching show folders
-        potential_shows = find_show_folder(provided_dir, show_name)
-        
-        if potential_shows:
-            rprint("\n[yellow]Found potential matching show folders:[/yellow]")
-            for i, folder in enumerate(potential_shows, 1):
-                rprint(f"[green]{i}:[/green] {folder.name}")
-            rprint(f"[green]{len(potential_shows) + 1}:[/green] Create new folder")
-            
-            choice = Prompt.ask(
-                "\n[cyan]Choose a folder number or press Enter to create new[/cyan]",
-                default=str(len(potential_shows) + 1)
-            )
-            
-            if int(choice) <= len(potential_shows):
-                show_dir = potential_shows[int(choice) - 1]
-                # Check for existing season folder
-                season_dir = show_dir / f"Season {season_num}"
-                if not season_dir.exists():
-                    rprint(f"\n[yellow]Creating season folder: {season_dir.name}[/yellow]")
-                    season_dir.mkdir()
-                return season_dir, show_dir.name, season_num
-        
-        # Create new folder structure
-        rprint(f"\n[yellow]Creating new folder structure for '{show_name}'[/yellow]")
-        season_dir = create_folder_structure(provided_dir, show_name, season_num)
-        return season_dir, show_name, season_num
-        
-    except Exception as e:
-        logger.error(f"Error setting up directory structure: {e}")
-        raise BluRayError(f"Failed to set up directory structure: {e}")
-
 def main():
     """Main entry point"""
     try:
-        logger.info("Starting BluRay ripper")
+        rprint("[blue]Starting BluRay ripper[/blue]")
         
         # Clean up from previous runs
-        cleanup_session()
-        
-        # Get output directory
-        output_dir = Path(Prompt.ask("[cyan]Enter output directory path[/cyan]")).expanduser()
-        
-        # Set up proper directory structure
-        output_dir, show_name, season_num = setup_output_directory(output_dir)
+        cleanup_previous_session()
         
         # Check for MakeMKV
         rprint("[blue]Checking dependencies...[/blue]")
@@ -1290,8 +1195,11 @@ def main():
         if not titles:
             raise BluRayError("No valid titles found on disc")
             
+        # Get output location and media type
+        output_dir, media_type = get_user_input()
+        
         # Process based on media type
-        if show_name:
+        if media_type.upper() == 'TV':
             process_tv_show(output_dir, titles)
         else:
             process_movie(output_dir)
@@ -1303,22 +1211,22 @@ def main():
     except KeyboardInterrupt:
         logger.warning("Process interrupted by user")
         rprint("\n[yellow]Process interrupted by user[/yellow]")
-        cleanup_session()
+        cleanup_previous_session()
         sys.exit(0)
     except BluRayError as e:
         logger.error(f"Setup error: {e}")
         rprint(f"[red]Setup error: {e}[/red]")
         if Confirm.ask("[yellow]Try again?[/yellow]"):
             main()
-        cleanup_session()
+        cleanup_previous_session()
         sys.exit(1)
     except Exception as e:
         logger.exception("Unexpected error")
         rprint(f"[red]Unexpected error: {e}[/red]")
-        cleanup_session()
+        cleanup_previous_session()
         sys.exit(1)
     finally:
-        cleanup_session()
+        cleanup_previous_session()
 
 if __name__ == '__main__':
     main()
