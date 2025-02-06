@@ -60,8 +60,8 @@ import tempfile
 
 # Configuration
 CONFIG = {
-    'TVDB_API_KEY': '0288a259-2426-4036-9e8c-cdb198098f1b',
-    'TMDB_API_KEY': 'b71086e74a0d3b9e48f4537c3a60a874',
+    'TVDB_API_KEY': '',
+    'TMDB_API_KEY': '',
     'TVDB_API_URL': 'https://api4.thetvdb.com/v4',
     'TMDB_API_URL': 'https://api.themoviedb.org/3',
     'DVD_DEVICE': 'D:'  # Default DVD drive letter for Windows
