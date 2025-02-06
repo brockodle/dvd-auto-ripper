@@ -1,8 +1,6 @@
 TVDB API documentation: https://thetvdb.github.io/v4-api/
 TMDB API documentation: https://developer.themoviedb.org/v4/reference/intro/getting-started
 HANDBRAKE CLI documentation: https://handbrake.fr/docs/en/latest/cli/cli-options.html
-TMDB_API_KEY="b71086e74a0d3b9e48f4537c3a60a874"
-TVDB_API_KEY="0288a259-2426-4036-9e8c-cdb198098f1b"
 
 **AI COMMAND**
 Use the following directions to create separate functions for each situation. the sections are delineated by the "**" symbols.
